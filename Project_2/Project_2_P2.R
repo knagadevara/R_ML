@@ -1,6 +1,6 @@
 ## Loading Required Packages
 library(dplyr)
-#library(ggplot2)
+library(ggplot2)
 library(car)
 library(caTools)
 library(caret)
@@ -28,22 +28,6 @@ CreateDummies=function(data,var,freq_cutoff=0){
   data[,var]=NULL
   return(data)
 }
-
-# precision <- function(matrix) {
-#   # True positive
-#   tp <- matrix[2, 2]
-#   # false positive
-#   fp <- matrix[1, 2]
-#   return (tp / (tp + fp))
-# }
-# 
-# recall <- function(matrix) {
-#   # true positive
-#   tp <- matrix[2, 2]# false positive
-#   fn <- matrix[2, 1]
-#   return (tp / (tp + fn))
-# }
-
 
 ## Setting Working Directory and Importing Files 
 setwd("D:\\PersonalFiles\\MyOldFiles\\R_ML\\Project_2")
@@ -96,17 +80,17 @@ for(col in names(Complete_DataSet)){
 ## Mutating and removing unwanted variables
 Complete_DataSet = Complete_DataSet %>% 
   mutate(
-#   ToTalSales = scale(ToTalSales),
+   ToTalSales = scale(ToTalSales),
     country = as.factor(country),
     store_Type = as.factor(store_Type),
-    state_alpha = as.factor(state_alpha),
-    Areaname = as.factor(Areaname))
+    state_alpha = as.factor(state_alpha)
+#    Areaname = as.factor(Areaname)
+   )
 
 ## Merging the Data
 Complete_DataSet = CreateDummies(Complete_DataSet,'store_Type',30)
 Complete_DataSet = CreateDummies(Complete_DataSet,'state_alpha', 30)
 Complete_DataSet = CreateDummies(Complete_DataSet,'country', 30)
-#Complete_DataSet = CreateDummies(Complete_DataSet,'Areaname', 30)
 Complete_DataSet = CreateDummies(Complete_DataSet,'countytownname', 30)
 
 ## Seperating the Data
@@ -114,129 +98,51 @@ set.seed(123)
 Final_train1=Complete_DataSet %>% filter(DataType=='TRAIN') %>% select(-DataType)
 Final_test1=Complete_DataSet %>% filter(DataType=='TEST') %>% select(-DataType,-store)
 
-# Checking VIF to remove the variables with multi-colinearity
-# RM_VIF1=lm(store~. ,Final_train1)
-# sort(vif(RM_VIF1),decreasing = T)[1:3]
+### Imputing the NA values in the predictor variable 'store'
+Final_train1 = rfImpute(store ~ . , data = Final_train1 , iter = 20)
 
+# Checking VIF to remove the variables with multi-colinearity
+RM_VIF1=lm(store~. ,Final_train1)
+sort(vif(RM_VIF1),decreasing = T)[1:3]
 
 # Making Store as a factor
 Final_train1$store = as.factor(Final_train1$store)
 levels(Final_train1$store)
 
-## Split2
+##Second Split 2
 set.seed(456)
 TT_split = sample.split(Final_train1 , SplitRatio = 0.75)
 train_train1 = subset(Final_train1,TT_split==TRUE)
 test_train1  = subset(Final_train1,TT_split==FALSE)
 
-#### Model 1
-set.seed(789)
-rf_model_train1 = randomForest(formula = store ~ . , data = train_train1 ,
-                               ntree = 400,
-                               mtry = 10 , 
-                               importance = TRUE,
-                               proximity = TRUE
-#                               classwt = 0,
-#                               samplesize = c(500,600,700)
-)
+## Tuning to get the best mTry values
+tuner_train = tuneRF(train_train1[,-c(train_train1$store)],train_train1[,train_train1$store], 
+                     stepFactor = 0.25,
+                     plot = TRUE,
+                     ntreeTry = 500,
+                     trace = TRUE,
+                     improve = 0.05)
 
-#attributes(rf_model_train1)#, Final_train1$store)
-pred1_train = predict(rf_model_train1,train_train1)
-confusionMatrix(pred1_train, train_train1$store)
-plot(rf_model_train1)
+### Training through caret Model = RandomForest
+### To check what models are available to names(getModelInfo())
+### proximity=TRUE to check put the Proximity_Matrix
+### for Classification mtry: No of variables to be consider at weak learning at each split is square-root of number of variables . can be changed later.
+### for Regression mtry: No of variable to be consider at weak learning at each split is default setting at number fo variables devided by 3. can be changed later.
+### tuning mtry will give a lower 'out of bag' error rate
 
-## Testing the model
-pred1_train_test = predict(rf_model_train1,test_train1)
-confusionMatrix(pred1_train_test, test_train1$store)
+ControlParameters = trainControl(method = 'cv' ,
+                                 number = 5,
+                                 savePredictions = TRUE
+                                )
+parameterGrid = expand.grid(mtry=c(9,10,11,19))
 
-
-#### Model 2
-set.seed(788)
-rf_model_train2 = randomForest(formula = store ~ . , data = train_train1 ,
-                               ntree = 400,
-                               mtry = 50 , 
-                               importance = TRUE,
-                               proximity = TRUE)
-
-
-#attributes(rf_model_train1)#, Final_train1$store)
-pred1_train2 = predict(rf_model_train2,train_train1)
-confusionMatrix(pred1_train2, train_train1$store)
-plot(rf_model_train1)
-
-
-## Testing the model
-pred1_train_test2 = predict(rf_model_train2,test_train1)
-confusionMatrix(pred1_train_test2, test_train1$store)
-
-## Model 3
-set.seed(953)
-rf_notune = randomForest(store ~ . , data = train_train1)
-pred1_notune = predict(rf_notune,train_train1)
-confusionMatrix(pred1_notune, train_train1$store)
-
-## Tuning mTry
-tuner_train = tuneRF(Final_train1[,-c(Final_train1$store)],Final_train1[,Final_train1$store], 
-       stepFactor = 0.25,
-       plot = TRUE,
-       ntreeTry = 500,
-       trace = TRUE,
-       improve = 0.05)
-
-
-
-## Applying Model 1 on Actual
-## Submitted with mtry 19 on 400 ntree score is 77
-## Tried with mtry = 10
-set.seed(789)
-rf_model_train1_final = randomForest(formula = store ~ . , data = Final_train1 ,
-                               ntree = 400,
-                               mtry = 10 , 
-                               importance = TRUE,
-                               proximity = TRUE)
-
-#attributes(rf_model_train1)#, Final_train1$store)
-pred1_train_final = predict(rf_model_train1_final,Final_train1)
-confusionMatrix(pred1_train_final, Final_train1$store)
-plot(rf_model_train1_final)
-
-## Testing on Actual
-pred1_train_test_Final = predict(rf_model_train1_final,Final_test1)
-
-write.csv(pred1_train_test_Final,'SaiKarthik_Nagadevara_P2_part2.csv',row.names = F)
-
-## Applying Model 2 on Actual
-set.seed(789)
-rf_model_train2_final = randomForest(formula = store ~ . , data = Final_train1 ,
-                                     ntree = 1000,
-                                     mtry = 75 , 
-                                     importance = TRUE,
-                                     proximity = TRUE)
-
-#attributes(rf_model_train1)#, Final_train1$store)
-pred1_train2_final = predict(rf_model_train2_final,Final_train1)
-confusionMatrix(pred1_train2_final, Final_train1$store)
-plot(rf_model_train2_final)
-# 
-# ## Testing the model on Train
-# pred1_train_test = predict(rf_model_train1,Final_train1)
-# confusionMatrix(pred1_train_test, Final_train1$store)
-
-## Testing on Actual
-pred1_train2_test_Final = predict(rf_model_train2_final,Final_test1)
-
-write.csv(pred1_train_test_Final,'SaiKarthik_Nagadevara_P2_part2_mtry75.csv',row.names = F ,col.names = T)
-
-### Training through caret
-RF_Car_Model = train(store~. ,
-                     train_train1 ,
-                     method = 'rf' , 
+RF_Car_Model = train(store ~ . ,
+                     data = train_train1 ,
+                     method = 'rf' ,
+                     trControl = ControlParameters,
                      TuneLength = 10 ,
-                     trControl = trainControl(
-                     method = 'cv' ,
-                     number = 2)) 
-  #                     classProbs = TRUE))
-?make.names
+                     tuneGrid = parameterGrid
+                     ) 
 
 predTest_final = predict(RF_Car_Model,train_train1)
 confusionMatrix(predTest_final, train_train1$store)
@@ -245,10 +151,27 @@ predTest1_final = predict(RF_Car_Model,test_train1)
 confusionMatrix(predTest1_final, test_train1$store)
 
 
-# Fit a GBM
-set.seed(102)  # for reproducibility
-gbm1 <- gbm(store ~ ., data = train_train1, var.monotone = c(0, 0, 0, 0, 0, 0),
-            distribution = "gaussian", n.trees = 100, shrinkage = 0.1,             
-            interaction.depth = 3, bag.fraction = 0.5, train.fraction = 0.5,  
-            n.minobsinnode = 10, cv.folds = 5, keep.data = TRUE, 
-            verbose = FALSE, n.cores = 1)  
+### Training through caret Model = XGBoosting
+### To check what models are available to names(getModelInfo())
+ControlParameters_XG = trainControl(method = 'cv' ,
+                                 number = 5,
+                                 savePredictions = TRUE
+)
+parameterGrid_XG = expand.grid(mtry=c(9,10,11,19))
+
+XG_Model = train(store ~ . ,
+                     data = train_train1 ,
+                     method = 'rf' ,
+                     trControl = ControlParameters_XG,
+                     TuneLength = 10 ,
+                     tuneGrid = parameterGrid_XG
+) 
+
+predTrain_final_XG = predict(XG_Model,train_train1)
+confusionMatrix(predTrain_final, train_train1$store)
+
+predTest_final_XG = predict(RF_Car_Model,test_train1)
+confusionMatrix(predTest_final, test_train1$store)
+
+## Writing the best model to file
+write.csv(pred1_train_test_Final,'SaiKarthik_Nagadevara_P2_part2.csv',row.names = F ,col.names = T)
