@@ -1,0 +1,115 @@
+Which of the following modelling technique can not be used for the given problem?
+
+Select one:
+a. logistic regressions Incorrect
+b. linear regression
+c. random forest
+d. decision trees
+Feedback
+Your answer is incorrect.
+Question 2
+Correct
+Mark 1 out of 1
+Not flaggedFlag question
+Question text
+Find out total promotions happened in last 5 years
+
+Answer:
+228
+Correct
+Question 3
+Correct
+Mark 1 out of 1
+Not flaggedFlag question
+Question text
+Find out the variance in statisfaction_level for category 0 of variable ‘left’ (round off to 4 decimal places).
+
+
+
+Answer:
+0.0487
+Correct
+Question 4
+Correct
+Mark 1 out of 1
+Not flaggedFlag question
+Question text
+Does average_monthly_hours follow normal distribution?
+
+Note : Just write 'Yes' or 'No' . If you write sentences , automated grading will consider it incorrect . Answers are not case sensitive . 
+
+
+Answer: 
+No
+Correct
+Question 5
+Correct
+Mark 1 out of 1
+Not flaggedFlag question
+Question text
+Find out which category of salary has maximum employee resignation.
+
+Note: you need to write name of just that category . Any further details will result in your answer being marked as wrong. Answers are not case sensitive . 
+
+
+
+Answer: 
+low
+Correct
+Question 6
+Correct
+Mark 1 out of 1
+Not flaggedFlag question
+Question text
+Find out correlation coefficient between last_evaluation and average_monthly_hours (round it off to 2 decimal places).
+
+Answer:
+0.33
+Correct
+Question 7
+Correct
+Mark 1 out of 1
+Not flaggedFlag question
+Question text
+According to given data what is the probability that someone will leave the organisation if they were involved in a work accident? (round off 2 decimal places)
+
+Answer:
+0.03
+Correct
+Question 8
+Correct
+Mark 1 out of 1
+Not flaggedFlag question
+Question text
+What is the median time spent with the company among people leaving the company?
+
+Answer:
+3
+Correct
+Question 9
+Correct
+Mark 1 out of 1
+Not flaggedFlag question
+Question text
+Which sales category has maximum median average_monthly_hours?
+
+Note: you need to write name of just that category . Any further details will result in your answer being marked as wrong. Answers are not case sensitive . 
+
+
+
+Answer: 
+accounting
+Correct
+Question 10
+Correct
+Mark 1 out of 1
+Not flaggedFlag question
+Question text
+Does number of projects significantly differ between two categories of the target variable “left”?
+
+Note : Just write 'Yes' or 'No' . If you write sentences , automated grading will consider it incorrect . Answers are not case sensitive . 
+
+
+Answer: 
+Yes
+Correct
