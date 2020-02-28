@@ -4,7 +4,9 @@ library(tidyr)
 library(ggplot2)
 library(car)
 library(caTools)
-
+library(caret)
+library(Matrix)
+library(xgboost)
 # ## Removing Outliers Function
 # remove_outliers = function(x , na.rm = TRUE , ... ){
 #   
@@ -63,12 +65,9 @@ Main_testing_Data$Price = ''
 
 ## Removing NA values for response variable in Training Set
 Main_training_Data$Price = ifelse(is.na(Main_training_Data$Price), na.omit(Main_training_Data$Price) , Main_training_Data$Price)
-
 nrow(Main_training_Data)
-
 boxplot(Main_training_Data$BuildingArea)
 summary(Main_training_Data$BuildingArea)
-
 table(is.na(Merged_DataSet$BuildingArea))
 table(is.na(Merged_DataSet$YearBuilt))
 table(is.na(Merged_DataSet$Postcode))
@@ -131,7 +130,6 @@ myLnd = sort(prop.table(table(Complete_DataSet$Landsize)))
 View(myLnd)
 mySub = sort(prop.table(table(Complete_DataSet$Suburb)))
 View(mySub)
-
 View(Complete_DataSet) 
 
 
@@ -183,12 +181,14 @@ write.csv(test.predictions,'SaiKarthik_Nagadevara_P1_part2.csv',row.names = F)
 ### To check what models are available to names(getModelInfo())
 
 ## Converting the Data into Matrix for eXtreem-Boosting_model
-train_lable = as.numeric(train1$Price)
-trainMat = sparse.model.matrix(left ~ . -left, data = train_train1 )
+train_lable = as.numeric(Final_train$Price)
+trainMat = sparse.model.matrix(Price ~ . -Price, data = Final_train )
 StoreMatrix_Train = xgb.DMatrix(data = as.matrix(trainMat) , label = train_lable)
 
-test_lable = as.numeric(test_train1$Price)
-testMat = sparse.model.matrix(left ~ . -left, data = test_train1 )
+
+Final_test$Price = ''
+test_lable = as.numeric(Final_test$Price)
+testMat = sparse.model.matrix(Price ~ . -Price,  data = Final_test )
 StoreMatrix_Test = xgb.DMatrix(data = as.matrix(testMat) , label = test_lable)
 
 ControlParameters_XG = trainControl(method = 'cv' ,
@@ -214,10 +214,3 @@ XG_Model = train(    StoreMatrix_Train , train_lable ,
                      trControl = ControlParameters_XG,
                      tuneGrid = parameterGrid_XG
 ) 
-
-
-predTrain_final_XG = predict(XG_Model,StoreMatrix_Train)
-confusionMatrix(predTrain_final_XG, train_train1$left)
-
-predTest_final_XG = predict(XG_Model,StoreMatrix_Test)
-confusionMatrix(predTest_final_XG, test_train1$left)
