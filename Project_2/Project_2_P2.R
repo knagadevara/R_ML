@@ -8,7 +8,8 @@ library(randomForest)
 library(Matrix)
 library(xgboost)
 library(magrittr)
-
+library('Boruta')
+library('mlbench')
 
 #Create Dummies Function
 CreateDummies=function(data,var,freq_cutoff=0){
@@ -134,13 +135,27 @@ tuner_train = tuneRF(train_train1[,-c(train_train1$store)],train_train1[,train_t
 ### for Regression mtry: No of variable to be consider at weak learning at each split is default setting at number fo variables devided by 3. can be changed later.
 ### tuning mtry will give a lower 'out of bag' error rate
 
+train_train1$store = as.factor(train_train1$store)
+
+## Feature selection using boruta
+set.seed(541)
+boruta12 = Boruta(store ~ . , data = train_train1 , doTrace = 2 , maxRuns = 650)
+MaybeVar = TentativeRoughFix(boruta12)
+plot(boruta12)
+getConfirmedFormula(boruta12)
+getNonRejectedFormula(boruta12)
 ControlParameters = trainControl(method = 'cv' ,
-                                 number = 5,
+                                 number = 8,
                                  savePredictions = TRUE
                                 )
-parameterGrid = expand.grid(mtry=c(10))
+parameterGrid = expand.grid(mtry=c(2:9))
 
-RF_Car_Model = train(store ~ . ,
+RF_Car_Model = train(store ~ population + ToTalSales + state_alpha_RI + state_alpha_WI + 
+                       state_alpha_PR + state_alpha_TN + state_alpha_CT + state_alpha_GA + 
+                       state_alpha_VT + state_alpha_NH + state_alpha_MA + state_alpha_ME + 
+                       country_31 + country_29 + country_21 + country_25 + country_1 + 
+                       country_13 + country_15 + country_19 + country_11 + country_7 + 
+                       country_5 + country_9 + country_3 ,
                      data = train_train1 ,
                      method = 'rf' ,
                      trControl = ControlParameters,
@@ -155,12 +170,12 @@ test_train1$store = as.factor(test_train1$store)
 
 predTest1_final = predict(RF_Car_Model,test_train1)
 confusionMatrix(predTest1_final, test_train1$store)
-
+class(train_lable)
 
 ## Converting the Data into Matrix for eXtreem-Boosting_model
 trainMat = sparse.model.matrix(store ~ . -store, data = train_train1 )
 #head(trainMat)
-train_lable = train_train1[,'store']
+train_lable = as.factor(train_train1$store)
 StoreMatrix_Train = xgb.DMatrix(data = as.matrix(trainMat) , label = train_lable)
 
 
@@ -205,24 +220,39 @@ table(pred_mat$max_prob, test_train1$store)
 ### To check what models are available to names(getModelInfo())
 
 ControlParameters_XG = trainControl(method = 'cv' ,
-                                 number = 5,
-                                 savePredictions = TRUE
+                                 number = 8,
+#                                 savePredictions = TRUE,
+                                 allowParallel = TRUE,
+                                 verboseIter = FALSE,
+                                 returnData = FALSE
 )
-parameterGrid_XG = expand.grid(mtry=c(9,10,11,19))
 
-XG_Model = train(store ~ . ,
-                     data = train_train1 ,
-                     method = 'rf' ,
+
+parameterGrid_XG <- expand.grid(nrounds = c(100,200,300),  # this is n_estimators in the python code above
+                       max_depth = c(10, 15, 20, 25,30),
+                       colsample_bytree = seq(0.5, 0.9, length.out = 5),
+                       ## The values below are default values in the sklearn-api. 
+                       eta = 0.05,
+                       gamma=0,
+                       min_child_weight = 1,
+                       subsample = 1
+)
+
+XG_Model = train(    StoreMatrix_Train , train_lable ,
+                     method = 'xgbTree' ,
                      trControl = ControlParameters_XG,
-                     TuneLength = 10 ,
                      tuneGrid = parameterGrid_XG
 ) 
 
-predTrain_final_XG = predict(XG_Model,train_train1)
-confusionMatrix(predTrain_final, train_train1$store)
 
-predTest_final_XG = predict(RF_Car_Model,test_train1)
-confusionMatrix(predTest_final, test_train1$store)
+predTrain_final_XG = predict(XG_Model,StoreMatrix_Train)
+confusionMatrix(predTrain_final_XG, train_train1$store)
+
+predTest_final_XG = predict(XG_Model,StoreMatrix_Test)
+confusionMatrix(predTest_final_XG, test_train1$store)
 
 ## Writing the best model to file
 write.csv(pred1_train_test_Final,'SaiKarthik_Nagadevara_P2_part2.csv',row.names = F ,col.names = T)
+
+
+#### xGBoosting has not shown any improvement in increasing the acuracy.

@@ -5,7 +5,11 @@ library(car)
 library(caTools)
 library(caret)
 library(randomForest)
-library(utils)
+library(Matrix)
+library(xgboost)
+library(magrittr)
+library('Boruta')
+library('mlbench')
 
 ## Create Dummies Function
 CreateDummies=function(data,var,freq_cutoff=0){
@@ -29,20 +33,20 @@ CreateDummies=function(data,var,freq_cutoff=0){
   return(data)
 }
 
-# precision <- function(matrix) {
-#   # True positive
-#   tp <- matrix[2, 2]
-#   # false positive
-#   fp <- matrix[1, 2]
-#   return (tp / (tp + fp))
-# }
-# 
-# recall <- function(matrix) {
-#   # true positive
-#   tp <- matrix[2, 2]# false positive
-#   fn <- matrix[2, 1]
-#   return (tp / (tp + fn))
-# }
+precision <- function(matrix) {
+  # True positive
+  tp <- matrix[2, 2]
+  # false positive
+  fp <- matrix[1, 2]
+  return (tp / (tp + fp))
+}
+
+recall <- function(matrix) {
+  # true positive
+  tp <- matrix[2, 2]# false positive
+  fn <- matrix[2, 1]
+  return (tp / (tp + fn))
+}
 
 ##### Importing Data
 ## Setting Working Directory and Importing Files 
@@ -60,14 +64,11 @@ Main_testing_Data$left = ''
 ## Removing NA values for response variable in Training Set
 Main_training_Data$left = ifelse(is.na(Main_training_Data$left), na.omit(Main_training_Data$left) , Main_training_Data$left)
 
-str(Main_training_Data)
-View(Main_training_Data)
-
 ## To remove Outliers on Training Data
-emore = boxplot(Main_training_Data$average_montly_hours,plot = FALSE)$out
-Outliers_Rows = Main_training_Data[which(Main_training_Data$average_montly_hours %in% emore),]
-Main_training_Data = Main_training_Data[-which(Main_training_Data$average_montly_hours %in% emore),]
-boxplot(Main_training_Data$average_montly_hours)
+# emore = boxplot(Main_training_Data$average_montly_hours,plot = FALSE)$out
+# Outliers_Rows = Main_training_Data[which(Main_training_Data$average_montly_hours %in% emore),]
+# Main_training_Data = Main_training_Data[-which(Main_training_Data$average_montly_hours %in% emore),]
+# boxplot(Main_training_Data$average_montly_hours)
 
 
 
@@ -75,7 +76,6 @@ boxplot(Main_training_Data$average_montly_hours)
 ## Conversions Time_spend_company
 
 Complete_DataSet = rbind(x = Main_training_Data , y = Main_testing_Data)
-sort(table(Main_testing_Data$average_montly_hours))
 
 Complete_DataSet = Complete_DataSet %>% 
 mutate(
@@ -128,7 +128,7 @@ test_train1  = subset(Final_train1,TT_split==FALSE)
 model1 = glm(left ~ . -time_spend_company_3 -number_project_4 -time_spend_company_2  ,train_train1 , family = 'binomial')
 library(e1071)
 library(pROC)
-summary(model1)
+#summary(model1)
 val.score = predict(model1,newdata = train_train1 , type = 'response')
 auc_score=auc(roc(train_train1$left , val.score))
 auc_score
@@ -154,17 +154,30 @@ auc_score21
 auc_score21 <- round(auc_score21, 4)
 legend (.5,.4,auc_score21, title = "AUC", cex =1)
 
-
-
-
-#### Model 1
+### Model 1
 set.seed(889)
-rf_model_train1 = randomForest(left ~ . -time_spend_company_3 -number_project_4 -time_spend_company_2  ,Final_train1 )
+rf_model_train1 = randomForest(left ~ . -time_spend_company_3 -number_project_4 -time_spend_company_2  , Final_train1 , stepFactor=0.5, improve=1e-5, ntree=500 )
 
 #attributes(rf_model_train1)#, Final_train1$store)
 pred1_train = predict(rf_model_train1,Final_train1)
 confusionMatrix(pred1_train, Final_train1$left)
 plot(rf_model_train1)
+
+### Model2
+#Create control function for training with 10 folds and keep 3 folds for training. search method is grid.
+control <- trainControl(method='repeatedcv', 
+                        number=10, 
+                        repeats=3, 
+                        search='grid')
+#create tunegrid with 15 values from 1:15 for mtry to tunning model. Our train function will change number of entry variable at each split according to tunegrid. 
+tunegrid <- expand.grid(.mtry = (1:15)) 
+
+rf_gridsearch <- train(left ~ ., 
+                       data = Final_train1,
+                       method = 'rf',
+                       metric = 'Accuracy',
+                       tuneGrid = tunegrid)
+print(rf_gridsearch)
 
 ## Testing on Actual
 pred1_train_test_Final = predict(rf_model_train1,Final_test1)
@@ -181,13 +194,47 @@ tuner_train = tuneRF(train_train1[,-c(train_train1$left)],train_train1[,train_tr
                      mtryStart = 10,
                      ntreeTry = 20,
                      improve = 0.05)
-##
-tuner_train = tuneRF(train_train1[,-c(train_train1$left)],train_train1[,train_train1$left], 
-                     stepFactor = 0.25,
-                     plot = TRUE,
-                     trace = TRUE,
-                     improve = 0.05)
 
-table(is.na(train_train1$left))
+### Training through caret Model = XGBoosting
+### To check what models are available to names(getModelInfo())
 
-class(train_train1$left)
+## Converting the Data into Matrix for eXtreem-Boosting_model
+train_lable = as.factor(train_train1$left)
+trainMat = sparse.model.matrix(left ~ . -left, data = train_train1 )
+StoreMatrix_Train = xgb.DMatrix(data = as.matrix(trainMat) , label = train_lable)
+
+test_lable = as.factor(test_train1$left)
+testMat = sparse.model.matrix(left ~ . -left, data = test_train1 )
+StoreMatrix_Test = xgb.DMatrix(data = as.matrix(testMat) , label = test_lable)
+
+ControlParameters_XG = trainControl(method = 'cv' ,
+                                    number = 8,
+                                    #                                 savePredictions = TRUE,
+                                    allowParallel = TRUE,
+                                    verboseIter = FALSE,
+                                    returnData = FALSE
+)
+
+
+parameterGrid_XG <- expand.grid(nrounds = c(100,200,300),  # this is n_estimators in the python code above
+                                max_depth = c(10, 15, 20, 25,30),
+                                colsample_bytree = seq(0.5, 0.9, length.out = 5),
+                                ## The values below are default values in the sklearn-api. 
+                                eta = 0.05,
+                                gamma=0,
+                                min_child_weight = 1,
+                                subsample = 1
+)
+
+XG_Model = train(    StoreMatrix_Train , train_lable ,
+                     method = 'xgbTree' ,
+                     trControl = ControlParameters_XG,
+                     tuneGrid = parameterGrid_XG
+) 
+
+
+predTrain_final_XG = predict(XG_Model,StoreMatrix_Train)
+confusionMatrix(predTrain_final_XG, train_train1$left)
+
+predTest_final_XG = predict(XG_Model,StoreMatrix_Test)
+confusionMatrix(predTest_final_XG, test_train1$left)
