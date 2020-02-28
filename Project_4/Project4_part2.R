@@ -4,12 +4,8 @@ library(ggplot2)
 library(car)
 library(caTools)
 library(caret)
-library(randomForest)
 library(Matrix)
 library(xgboost)
-library(magrittr)
-library('Boruta')
-library('mlbench')
 
 ## Create Dummies Function
 CreateDummies=function(data,var,freq_cutoff=0){
@@ -117,6 +113,7 @@ summary(RM_VIF1)
 # Making Store as a factor
 Final_train1$left = as.factor(Final_train1$left)
 levels(Final_train1$left)
+Final_test1$left = ''
 
 ## Split2
 set.seed(456)
@@ -199,6 +196,8 @@ tuner_train = tuneRF(train_train1[,-c(train_train1$left)],train_train1[,train_tr
 ### To check what models are available to names(getModelInfo())
 
 ## Converting the Data into Matrix for eXtreem-Boosting_model
+
+## Sorid Test1
 train_lable = as.factor(train_train1$left)
 trainMat = sparse.model.matrix(left ~ . -left, data = train_train1 )
 StoreMatrix_Train = xgb.DMatrix(data = as.matrix(trainMat) , label = train_lable)
@@ -206,6 +205,16 @@ StoreMatrix_Train = xgb.DMatrix(data = as.matrix(trainMat) , label = train_lable
 test_lable = as.factor(test_train1$left)
 testMat = sparse.model.matrix(left ~ . -left, data = test_train1 )
 StoreMatrix_Test = xgb.DMatrix(data = as.matrix(testMat) , label = test_lable)
+
+### Final Variables
+Final_train_lable = as.factor(Final_train1$left)
+Final_trainMat = sparse.model.matrix(left ~ . -left, data = Final_train1 )
+Final_StoreMatrix_Train = xgb.DMatrix(data = as.matrix(Final_trainMat) , label = Final_train_lable)
+
+Final_test_lable = as.factor(Final_test1$left)
+Final_testMat = sparse.model.matrix(left ~ . -left, data = Final_test1 )
+Final_StoreMatrix_Test = xgb.DMatrix(data = as.matrix(Final_testMat) , label = Final_test_lable)
+
 
 ControlParameters_XG = trainControl(method = 'cv' ,
                                     number = 8,
@@ -226,6 +235,7 @@ parameterGrid_XG <- expand.grid(nrounds = c(100,200,300),  # this is n_estimator
                                 subsample = 1
 )
 
+### Validation Model
 XG_Model = train(    StoreMatrix_Train , train_lable ,
                      method = 'xgbTree' ,
                      trControl = ControlParameters_XG,
@@ -238,3 +248,16 @@ confusionMatrix(predTrain_final_XG, train_train1$left)
 
 predTest_final_XG = predict(XG_Model,StoreMatrix_Test)
 confusionMatrix(predTest_final_XG, test_train1$left)
+
+### Final Model
+Final_XG_Model = train(    Final_StoreMatrix_Train , Final_train_lable ,
+                     method = 'xgbTree' ,
+                     trControl = ControlParameters_XG,
+                     tuneGrid = parameterGrid_XG
+) 
+
+
+predTrain_DinalTrain = predict(Final_XG_Model,Final_StoreMatrix_Train)
+confusionMatrix(predTrain_DinalTrain, Final_train1$left)
+
+predTest_Final = predict(Final_XG_Model,Final_StoreMatrix_Test)
