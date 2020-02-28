@@ -5,7 +5,10 @@ library(car)
 library(caTools)
 library(caret)
 library(randomForest)
-library(utils)
+library(Matrix)
+library(xgboost)
+library(magrittr)
+
 
 #Create Dummies Function
 CreateDummies=function(data,var,freq_cutoff=0){
@@ -81,9 +84,10 @@ for(col in names(Complete_DataSet)){
 Complete_DataSet = Complete_DataSet %>% 
   mutate(
    ToTalSales = scale(ToTalSales),
-    country = as.factor(country),
-    store_Type = as.factor(store_Type),
-    state_alpha = as.factor(state_alpha)
+   ToTalSales = as.numeric(ToTalSales),
+   country = as.factor(country),
+   store_Type = as.factor(store_Type),
+   state_alpha = as.factor(state_alpha)
 #    Areaname = as.factor(Areaname)
    )
 
@@ -106,8 +110,8 @@ RM_VIF1=lm(store~. ,Final_train1)
 sort(vif(RM_VIF1),decreasing = T)[1:3]
 
 # Making Store as a factor
-Final_train1$store = as.factor(Final_train1$store)
-levels(Final_train1$store)
+#Final_train1$store = as.factor(Final_train1$store)
+#evels(Final_train1$store)
 
 ##Second Split 2
 set.seed(456)
@@ -134,7 +138,7 @@ ControlParameters = trainControl(method = 'cv' ,
                                  number = 5,
                                  savePredictions = TRUE
                                 )
-parameterGrid = expand.grid(mtry=c(9,10,11,19))
+parameterGrid = expand.grid(mtry=c(10))
 
 RF_Car_Model = train(store ~ . ,
                      data = train_train1 ,
@@ -147,12 +151,59 @@ RF_Car_Model = train(store ~ . ,
 predTest_final = predict(RF_Car_Model,train_train1)
 confusionMatrix(predTest_final, train_train1$store)
 
+test_train1$store = as.factor(test_train1$store)
+
 predTest1_final = predict(RF_Car_Model,test_train1)
 confusionMatrix(predTest1_final, test_train1$store)
 
 
+## Converting the Data into Matrix for eXtreem-Boosting_model
+trainMat = sparse.model.matrix(store ~ . -store, data = train_train1 )
+#head(trainMat)
+train_lable = train_train1[,'store']
+StoreMatrix_Train = xgb.DMatrix(data = as.matrix(trainMat) , label = train_lable)
+
+
+testMat = sparse.model.matrix(store ~ . -store, data = test_train1 )
+test_lable = test_train1[,'store']
+StoreMatrix_Test = xgb.DMatrix(data = as.matrix(testMat) , label = test_lable)
+
+##### Parameters
+ncls = length(unique(train_lable))
+
+xgb_params = list('objective' = 'multi:softprob',
+                  'eval_metric' = 'mlogloss' ,
+                  'num_class' = ncls)
+
+watchlist = list(train = StoreMatrix_Train , test = StoreMatrix_Test)
+
+
+xB_model1 =  xgb.train(params = xgb_params , 
+                       data = StoreMatrix_Train ,
+                       nrounds = 75 ,
+                       watchlist = watchlist ,
+                       eta = 0.075)
+
+error_xg = data.frame(xB_model1$evaluation_log)
+plot(error_xg$iter , error_xg$train_mlogloss , col = 'blue')
+lines(error_xg$iter , error_xg$test_mlogloss , col = 'red')
+min(error_xg$test_mlogloss)
+error_xg[error_xg$test_mlogloss == 0.529722 ,]
+pxg_tr = predict(xB_model1 , newdata = StoreMatrix_Train)
+pxg = predict(xB_model1 , newdata = StoreMatrix_Test)
+
+pred_mat_tr = matrix(pxg , nrow = ncls , ncol = length(pxg_tr)/ncls) %>% 
+  t() %>%  data.frame() %>%  mutate(lable = train_lable , max_prob = max.col(.,"last")-1)
+
+pred_mat = matrix(pxg , nrow = ncls , ncol = length(pxg)/ncls) %>% 
+  t() %>%  data.frame() %>%  mutate(lable = test_lable , max_prob = max.col(.,"last")-1)
+
+
+table(pred_mat$max_prob, test_train1$store)
+
 ### Training through caret Model = XGBoosting
 ### To check what models are available to names(getModelInfo())
+
 ControlParameters_XG = trainControl(method = 'cv' ,
                                  number = 5,
                                  savePredictions = TRUE
