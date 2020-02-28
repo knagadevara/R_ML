@@ -4,7 +4,7 @@ library(tidyr)
 library(ggplot2)
 library(car)
 library(caTools)
-# 
+
 # ## Removing Outliers Function
 # remove_outliers = function(x , na.rm = TRUE , ... ){
 #   
@@ -74,9 +74,6 @@ table(is.na(Merged_DataSet$YearBuilt))
 table(is.na(Merged_DataSet$Postcode))
 table(is.na(Merged_DataSet$Landsize))
 View(sort(prop.table(table(Merged_DataSet$Postcode))))
-
-
-
 
 
 ## Merging the Data
@@ -158,22 +155,69 @@ Final_test=Complete_DataSet %>% filter(DataType=='TEST') %>% select(-DataType,-P
 
 
 ## Splitting Final_train to train1 and test2
-# set.seed(123)
-# TT_split = sample.split(Final_train$Price , SplitRatio = 0.75)
-# train1 = subset(Final_train,TT_split==TRUE)
-# test2  = subset(Final_train,TT_split==FALSE)
-## Building a Lazy model
-#for_vif=lm(Price~.-Rooms_3-Bedroom2_2-Car_1-Bathroom_2-SellerG-Suburb_CarltonNorth-Suburb_Viewbank,data=train1)
-#Final_Fit=lm(Price~.-Rooms_3-Bedroom2_2-Car_1-Bathroom_2-SellerG-Suburb_CarltonNorth-Suburb_Viewbank-Suburb_Heidelberg-Suburb_Windsor-Suburb_Rosanna-Suburb_AirportWest-Suburb_Niddrie-Suburb_Strathmore-Suburb_Ivanhoe-Suburb_KeilorEast-Suburb_Prahran-Suburb_Sunshine-Suburb_MooneePonds-Suburb_PortMelbourne-Suburb_Hawthorn-Suburb_Glenroy-Suburb_Essendon-Suburb_SouthYarra-Suburb_StKilda-Method_SP-Method_PI-Car_0-Suburb_Gowanbrae-Suburb_Parkville-Suburb_Yallambie-Suburb_Albion-Suburb_Aberfeldie-Suburb_Alphington,data=Final_train)
-# summary(for_vif)
+## Split2
+set.seed(456)
+TT_split = sample.split(Final_train1 , SplitRatio = 0.75)
+train_train1 = subset(Final_train1,TT_split==TRUE)
+test_train1  = subset(Final_train1,TT_split==FALSE)
 
-Final_Fit2=lm(Price~.-Bathroom_1,Final_train)
-sort(vif(Final_Fit2),decreasing = T)[1:5]
-vif(Final_Fit2)
-summary(Final_Fit2)
-step(Final_Fit2)
+## Building a Lazy model to observe and remove unwanted variables
+VIF_Fit=lm(Price~.,Final_train)
+sort(vif(VIF_Fit),decreasing = T)[1:5]
+vif(VIF_Fit)
+summary(VIF_Fit)
 
+## Using Step to Identify models with lowest RMSE and adjusted R square
+step(VIF_Fit)
+
+## taking the optimized formula from Step and building a Final model
+Final_Fit=lm(Price~.-Rooms_3-Bedroom2_2-Car_1-Bathroom_2-SellerG-Suburb_CarltonNorth-Suburb_Viewbank-Suburb_Heidelberg-Suburb_Windsor-Suburb_Rosanna-Suburb_AirportWest-Suburb_Niddrie-Suburb_Strathmore-Suburb_Ivanhoe-Suburb_KeilorEast-Suburb_Prahran-Suburb_Sunshine-Suburb_MooneePonds-Suburb_PortMelbourne-Suburb_Hawthorn-Suburb_Glenroy-Suburb_Essendon-Suburb_SouthYarra-Suburb_StKilda-Method_SP-Method_PI-Car_0-Suburb_Gowanbrae-Suburb_Parkville-Suburb_Yallambie-Suburb_Albion-Suburb_Aberfeldie-Suburb_Alphington,data=Final_train)
+summary(for_vif)
+
+## Testing the data on unseen values
 test.predictions=predict(Final_Fit,newdata=Final_test)
-View(Final_test)
 
 write.csv(test.predictions,'SaiKarthik_Nagadevara_P1_part2.csv',row.names = F)
+
+### Training through caret Model = XGBoosting
+### To check what models are available to names(getModelInfo())
+
+## Converting the Data into Matrix for eXtreem-Boosting_model
+train_lable = as.numeric(train1$Price)
+trainMat = sparse.model.matrix(left ~ . -left, data = train_train1 )
+StoreMatrix_Train = xgb.DMatrix(data = as.matrix(trainMat) , label = train_lable)
+
+test_lable = as.numeric(test_train1$Price)
+testMat = sparse.model.matrix(left ~ . -left, data = test_train1 )
+StoreMatrix_Test = xgb.DMatrix(data = as.matrix(testMat) , label = test_lable)
+
+ControlParameters_XG = trainControl(method = 'cv' ,
+                                    number = 8,
+                                    allowParallel = TRUE,
+                                    verboseIter = FALSE,
+                                    returnData = FALSE
+)
+
+
+parameterGrid_XG <- expand.grid(nrounds = c(100,200,300),  # this is n_estimators in the python code above
+                                max_depth = c(10, 15, 20, 25,30),
+                                colsample_bytree = seq(0.5, 0.9, length.out = 5),
+                                ## The values below are default values in the sklearn-api. 
+                                eta = 0.05,
+                                gamma=0,
+                                min_child_weight = 1,
+                                subsample = 1
+)
+
+XG_Model = train(    StoreMatrix_Train , train_lable ,
+                     method = 'xgbTree' ,
+                     trControl = ControlParameters_XG,
+                     tuneGrid = parameterGrid_XG
+) 
+
+
+predTrain_final_XG = predict(XG_Model,StoreMatrix_Train)
+confusionMatrix(predTrain_final_XG, train_train1$left)
+
+predTest_final_XG = predict(XG_Model,StoreMatrix_Test)
+confusionMatrix(predTest_final_XG, test_train1$left)
