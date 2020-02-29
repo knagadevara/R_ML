@@ -214,3 +214,11 @@ XG_Model = train(    StoreMatrix_Train , train_lable ,
                      trControl = ControlParameters_XG,
                      tuneGrid = parameterGrid_XG
 ) 
+
+
+predTrain_final_XG = predict(XG_Model,StoreMatrix_Train)
+confusionMatrix(predTrain_final_XG, train_train1$left)
+
+predTest_final_XG = predict(XG_Model,StoreMatrix_Test)
+
+write.csv(predTest_final_XG,'SaiKarthik_Nagadevara_P1_part2_XG.csv',row.names = F)
